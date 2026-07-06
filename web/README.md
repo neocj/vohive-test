@@ -5,7 +5,7 @@
 ## 依赖与约定
 
 - 后端默认监听 `:7575`，API 前缀为 `/api`。
-- 前端开发服务器默认监听 `:5173`，并通过 Vite 代理把 `/api` 转发到 `http://127.0.0.1:7575`（见 [vite.config.ts](file:///root/ec20/go-4gproxy/web/vite.config.ts)）。
+- 前端开发服务器默认监听 `:5173`，并通过 Vite 代理把 `/api` 转发到 `http://127.0.0.1:7575`（见 `web/vite.config.ts`）。
 
 ## 开发运行
 
@@ -32,4 +32,4 @@ npm run build
 
 ## 相关文档
 
-- 后端与整体项目说明见 [../README.md](file:///root/ec20/go-4gproxy/README.md)
+- 后端与整体项目说明见 `../README.md`

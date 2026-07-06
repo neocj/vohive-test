@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -15,6 +16,7 @@ const (
 	MBIMTransportProxy         = "proxy"
 	MBIMTransportDirect        = "direct"
 	DefaultWebhookTextTemplate = "{{device_label}} {{text}}"
+	EnvAdminPassword          = "VOHIVE_ADMIN_PASSWORD"
 )
 
 func NormalizeESIMTransport(in string) string {
@@ -241,6 +243,7 @@ type PushplusConfig struct {
 }
 
 func Load(path string) (*Config, error) {
+	viper.Reset()
 	viper.SetConfigFile(path)
 	viper.SetConfigType("yaml")
 
@@ -274,6 +277,16 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+	}
+
+	if envPassword := strings.TrimSpace(os.Getenv(EnvAdminPassword)); envPassword != "" {
+		cfg.Web.Password = envPassword
+	}
+	if strings.TrimSpace(cfg.Web.Username) == "" {
+		cfg.Web.Username = "admin"
+	}
+	if strings.TrimSpace(cfg.Web.Password) == "" || strings.TrimSpace(cfg.Web.Password) == "admin" {
+		return nil, fmt.Errorf("unsafe default admin password refused: set web.password in config.yaml or set %s to a strong password before starting", EnvAdminPassword)
 	}
 
 	// 兼容旧版单值配置: feishu.chat_id

@@ -80,8 +80,6 @@ github.com/iniwex5/qqbot v1.0.1 h1:YuvvOrPfINEcgyco6J9QPaBtefVPcnqivVGWlaKf05M=
 github.com/iniwex5/qqbot v1.0.1/go.mod h1:yX/U6Vw4BIk0KCLyUmVJOiNK3FD2cQwqYUtay927gV4=
 github.com/iniwex5/quectel-qmi-go v0.6.0 h1:zWZc9jeNMy7+USFRBbfdShnjzSryyYnCw7NPw4ubaIg=
 github.com/iniwex5/quectel-qmi-go v0.6.0/go.mod h1:6AlSY+Yj4MqJOsZ8cNrq99AzT9MlaopADnJtSRiyAfE=
-github.com/iniwex5/vowifi-go v1.1.2 h1:C9GUw66vG//uWprx68tDqnOKfQDry4L7EdBL35UgnMI=
-github.com/iniwex5/vowifi-go v1.1.2/go.mod h1:3SK63TPpPeB+u+X49zhQqNqw0ZXcV88Z8dIGU/ECCX0=
 github.com/jinzhu/inflection v1.0.0 h1:K317FqzuhWc8YvSVlFMCCUb36O/S9MCKRDI7QkRKD/E=
 github.com/jinzhu/inflection v1.0.0/go.mod h1:h+uFLlag+Qp1Va5pdKtLDYj+kHp5pxUVkryuEj+Srlc=
 github.com/jinzhu/now v1.1.5 h1:/o9tlHleP7gOFmsnYNz3RGnqzefHA47wQpKrrdTIwXQ=
@@ -116,8 +114,6 @@ github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWE
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/miekg/dns v1.1.67 h1:kg0EHj0G4bfT5/oOys6HhZw4vmMlnoZ+gDu8tJ/AlI0=
 github.com/miekg/dns v1.1.67/go.mod h1:fujopn7TB3Pu3JM69XaawiU0wqjpL9/8xGop5UrTPps=
-github.com/minio/selfupdate v0.6.0 h1:i76PgT0K5xO9+hjzKcacQtO7+MjJ4JKA8Ak8XQ9DDwU=
-github.com/minio/selfupdate v0.6.0/go.mod h1:bO02GTIPCMQFTEvE5h4DjYB58bCoZ35XLeBf0buTDdM=
 github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w8PVh93nsPXa1VrQ6jlwL5oN8l14QlcNfg=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=

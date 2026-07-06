@@ -1,77 +1,58 @@
-name: docker-build
+name: Build and Publish ARM64 Docker Image
 
 on:
   workflow_dispatch:
-    inputs:
-      platforms:
-        description: build platforms
-        required: false
-        default: linux/amd64,linux/arm64
-      push:
-        description: push image
-        required: false
-        default: "false"
-      enable_upx:
-        description: enable UPX compression (true/false)
-        required: false
-        default: "true"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/neocj/vohive-test
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
-        if: ${{ contains(inputs.platforms, 'arm') || contains(inputs.platforms, 'ppc') || contains(inputs.platforms, 's390') || contains(inputs.platforms, 'riscv') }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
         with:
-          platforms: all
+          platforms: arm64
 
-      - uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
-        if: ${{ inputs.push == 'true' }}
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare build args
+      - name: Prepare build metadata
         id: vars
         shell: bash
         run: |
-          VERSION="dev-${GITHUB_SHA::7}"
-          BUILDTIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          REVISION="${GITHUB_SHA}"
-          ENABLE_UPX_RAW="${{ inputs.enable_upx }}"
-          case "${ENABLE_UPX_RAW}" in
-            false|0|no|off) ENABLE_UPX=0 ;;
-            *) ENABLE_UPX=1 ;;
-          esac
-          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
-          echo "buildtime=${BUILDTIME}" >> "${GITHUB_OUTPUT}"
-          echo "revision=${REVISION}" >> "${GITHUB_OUTPUT}"
-          echo "enable_upx=${ENABLE_UPX}" >> "${GITHUB_OUTPUT}"
+          echo "version=arm64-${GITHUB_SHA::7}" >> "${GITHUB_OUTPUT}"
+          echo "build_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "${GITHUB_OUTPUT}"
 
-      - uses: docker/build-push-action@v6
+      - name: Build and publish linux/arm64 image
+        uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.github
-          platforms: ${{ inputs.platforms }}
-          push: ${{ inputs.push == 'true' }}
-          tags: ghcr.io/${{ github.repository }}/vohive:dev
-          provenance: false
-          sbom: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          secrets: |
-            gh_pat=${{ secrets.GH_PAT }}
+          file: Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:arm64
+            ${{ env.IMAGE_NAME }}:latest-arm64
           build-args: |
             VERSION=${{ steps.vars.outputs.version }}
-            BUILDTIME=${{ steps.vars.outputs.buildtime }}
-            REVISION=${{ steps.vars.outputs.revision }}
-            ENABLE_UPX=${{ steps.vars.outputs.enable_upx }}
-            GH_PAT=${{ secrets.GH_PAT }}
+            BUILD_TIME=${{ steps.vars.outputs.build_time }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true

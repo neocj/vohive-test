@@ -1,18 +1,24 @@
 services:
   vohive:
     build:
-      context: ..  # 使用父目录作为构建上下文，以便访问 quectel-qmi-go 和 swu-go
-      dockerfile: vohive/Dockerfile
-    image: vohive:latest
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/arm64
+    image: ghcr.io/neocj/vohive-test:arm64
     container_name: vohive
     restart: unless-stopped
-    network_mode: "host" # 推荐使用 Host 模式以便管理 4G 网卡接口
-    privileged: true     # 需要访问 USB 设备、网络管理能力与 /dev/net/tun
+    network_mode: host
     volumes:
       - ./config:/app/config
       - ./data:/app/data
       - ./logs:/app/logs
-      - /dev:/dev
     environment:
-      - TZ=Asia/Shanghai
-      - HTTPS_PROXY=http://10.10.10.10:6152
+      TZ: ${TZ:-Asia/Shanghai}
+      CONFIG_PATH: /app/config/config.yaml
+      VOHIVE_ADMIN_PASSWORD: ${VOHIVE_ADMIN_PASSWORD:?set VOHIVE_ADMIN_PASSWORD in .env before starting VoHive}
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - "${VOHIVE_SERIAL_DEVICE:?set VOHIVE_SERIAL_DEVICE in .env, for example /dev/ttyUSB2}:${VOHIVE_SERIAL_DEVICE:?set VOHIVE_SERIAL_DEVICE in .env, for example /dev/ttyUSB2}"
+      - "${VOHIVE_CONTROL_DEVICE:?set VOHIVE_CONTROL_DEVICE in .env, for example /dev/cdc-wdm0}:${VOHIVE_CONTROL_DEVICE:?set VOHIVE_CONTROL_DEVICE in .env, for example /dev/cdc-wdm0}"

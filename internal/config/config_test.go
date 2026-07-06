@@ -9,11 +9,41 @@ import (
 
 func writeTempConfig(t *testing.T, content string) string {
 	t.Helper()
+	t.Setenv(EnvAdminPassword, "test-admin-password")
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	return path
+}
+
+func TestLoadRejectsDefaultAdminPassword(t *testing.T) {
+	t.Setenv(EnvAdminPassword, "")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("server:\n  port: 7575\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "unsafe default admin password refused") {
+		t.Fatalf("Load() error = %v, want unsafe default password refusal", err)
+	}
+}
+
+func TestLoadUsesAdminPasswordFromEnvironment(t *testing.T) {
+	t.Setenv(EnvAdminPassword, "from-env-secret")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("web:\n  username: admin\n  password: admin\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Web.Password != "from-env-secret" {
+		t.Fatalf("Web.Password = %q, want env override", cfg.Web.Password)
+	}
 }
 
 func TestGetConfigPathReturnsInitializedPath(t *testing.T) {

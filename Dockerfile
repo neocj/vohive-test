@@ -1,68 +1,55 @@
-# 构建阶段 1: 前端构建 (Frontend)
-FROM node:20-alpine AS frontend-builder
-WORKDIR /app/web
-COPY go-4gproxy/web/package*.json ./
-RUN npm ci
-COPY go-4gproxy/web/ .
+# syntax=docker/dockerfile:1.7
+
+FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-builder
+WORKDIR /src/web
+
+COPY web/package*.json ./
+RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci
+
+COPY web/ ./
 RUN npm run build
 
-# 构建阶段 2: 后端构建 (Backend)
-FROM golang:1.24-alpine AS backend-builder
-ARG GH_PAT=""
-WORKDIR /app
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS backend-builder
+ARG TARGETOS=linux
+ARG TARGETARCH=arm64
+ARG VERSION=dev
+ARG BUILD_TIME=unknown
 
-# 启用 Go 工具链自动下载
-ENV GOTOOLCHAIN=auto
-ENV GOPRIVATE=github.com/iniwex5/*
-ENV GONOSUMDB=github.com/iniwex5/*
+WORKDIR /src
+ENV CGO_ENABLED=0 \
+    GOWORK=off
 
-# 安装构建依赖
-RUN apk add --no-cache git
-
-# 配置 Git 以支持拉取私有库
-RUN if [ -n "${GH_PAT}" ]; then git config --global url."https://x-access-token:${GH_PAT}@github.com/iniwex5/".insteadOf "https://github.com/iniwex5/"; fi
-
-# 复制 go mod 文件
-COPY go-4gproxy/go.mod go-4gproxy/go.sum ./
-
-RUN go mod download
-
-# 复制源代码 (不包含 internal/web/dist，这将在下一步从前端构建阶段复制)
-COPY go-4gproxy/ .
-
-# 复制构建好的前端资源到 internal/web/dist 以便嵌入
-# 必须在 go build 之前完成
-COPY --from=frontend-builder /app/web/dist ./internal/web/dist/
-
-# 验证前端资源已复制
-RUN ls -la internal/web/dist/ && echo "Frontend assets copied successfully"
-
-# 整理依赖并编译二进制
-RUN go mod tidy
-RUN VERSION=$(git describe --tags --always --dirty || echo "unknown") && \
-    BUILD_TIME=$(date "+%Y-%m-%d %H:%M:%S") && \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -tags "with_utls nomsgpack" -ldflags "-s -w -X 'github.com/iniwex5/vohive/internal/global.Version=${VERSION}' -X 'github.com/iniwex5/vohive/internal/global.BuildTime=${BUILD_TIME}'" -o vo-hive ./cmd/vohive
-
-# 运行阶段 (Runtime)
-FROM alpine:latest
-WORKDIR /app
-
-# 安装运行时依赖
-# - ca-certificates / tzdata: 基础 HTTPS 与时区支持
 RUN apk add --no-cache ca-certificates tzdata
 
-# 复制二进制文件
-COPY --from=backend-builder /app/vo-hive .
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    go mod download
 
-# 创建配置和数据目录
-RUN mkdir -p config data logs
+COPY . ./
+COPY --from=frontend-builder /src/web/dist ./internal/web/dist
+RUN test -s internal/web/dist/index.html
 
-# 暴露端口 (API)
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -buildvcs=false -tags "with_utls nomsgpack" \
+      -ldflags "-s -w -X 'github.com/iniwex5/vohive/internal/global.Version=${VERSION}' -X 'github.com/iniwex5/vohive/internal/global.BuildTime=${BUILD_TIME}'" \
+      -o /out/vo-hive ./cmd/vohive
+
+FROM alpine:3.22
+WORKDIR /app
+
+RUN apk add --no-cache ca-certificates tzdata iproute2 psmisc && \
+    mkdir -p /app/config /app/data /app/logs
+
+COPY --from=backend-builder /out/vo-hive /app/vo-hive
+COPY entrypoint.sh /app/entrypoint.sh
+COPY config/config.yaml.example /app/config.yaml.example
+RUN chmod +x /app/entrypoint.sh
+
+ENV TZ=Asia/Shanghai \
+    CONFIG_PATH=/app/config/config.yaml
+
 EXPOSE 7575
-
-# 默认配置路径环境变量
-ENV CONFIG_PATH=/app/config/config.yaml
-
-# 入口点
-ENTRYPOINT ["./vo-hive"]
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["-c", "/app/config/config.yaml"]

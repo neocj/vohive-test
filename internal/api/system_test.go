@@ -6,115 +6,93 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iniwex5/vohive/internal/config"
 )
 
-// resolveUninstallTargets 必须使用运行时实际加载的配置文件路径，
-// 而不是硬编码相对路径 "config"——后者在 OpenWrt 部署下（通过 -c 传入
-// /etc/vohive/config.yaml，与进程工作目录无关）永远指向一个不存在的目录，
-// 导致真实配置文件从未被清理。
-func TestResolveUninstallTargetsUsesActualConfigPath(t *testing.T) {
-	dataDir, configFile := resolveUninstallTargets("/etc/vohive/config.yaml")
-
-	if dataDir != "data" {
-		t.Fatalf("dataDir = %q, want %q", dataDir, "data")
-	}
-	if configFile != "/etc/vohive/config.yaml" {
-		t.Fatalf("configFile = %q, want %q", configFile, "/etc/vohive/config.yaml")
-	}
-}
-
-func TestResolveUninstallTargetsSkipsConfigWhenPathUnknown(t *testing.T) {
-	// 配置管理器尚未初始化时 config.GetConfigPath() 返回空字符串，
-	// 此时绝不能删除任何路径（避免误删进程当前工作目录）。
-	_, configFile := resolveUninstallTargets("")
-
-	if configFile != "" {
-		t.Fatalf("configFile = %q, want empty when config path unknown", configFile)
-	}
-}
-
-// detectServiceStopCommands 决定自毁前应主动通知哪个服务管理器停止+禁用自启，
-// 这样即使删除可执行文件失败（例如只读文件系统），supervisor 也不会把进程重新拉起来，
-// 而不是像原来那样仅依赖"删掉自己导致 exec 失败"这种脆弱的副作用。
-func TestDetectServiceStopCommandsPrefersOpenWrtInitScript(t *testing.T) {
-	statFile := func(path string) bool { return path == "/etc/init.d/vohive" }
-	lookPath := func(name string) (string, error) { return "/usr/bin/systemctl", nil }
-
-	cmds := detectServiceStopCommands(lookPath, statFile)
-
-	if len(cmds) != 2 {
-		t.Fatalf("len(cmds) = %d, want 2 (disable + stop), got %v", len(cmds), cmds)
-	}
-	if cmds[0][0] != "/etc/init.d/vohive" || cmds[0][1] != "disable" {
-		t.Fatalf("cmds[0] = %v, want [/etc/init.d/vohive disable]", cmds[0])
-	}
-	if cmds[1][0] != "/etc/init.d/vohive" || cmds[1][1] != "stop" {
-		t.Fatalf("cmds[1] = %v, want [/etc/init.d/vohive stop]", cmds[1])
-	}
-}
-
-func TestDetectServiceStopCommandsFallsBackToSystemd(t *testing.T) {
-	statFile := func(path string) bool { return false }
-	lookPath := func(name string) (string, error) {
-		if name == "systemctl" {
-			return "/usr/bin/systemctl", nil
-		}
-		return "", errNotFound
-	}
-
-	cmds := detectServiceStopCommands(lookPath, statFile)
-
-	if len(cmds) != 1 {
-		t.Fatalf("len(cmds) = %d, want 1, got %v", len(cmds), cmds)
-	}
-	want := []string{"systemctl", "disable", "--now", "vohive"}
-	if len(cmds[0]) != len(want) {
-		t.Fatalf("cmds[0] = %v, want %v", cmds[0], want)
-	}
-	for i := range want {
-		if cmds[0][i] != want[i] {
-			t.Fatalf("cmds[0] = %v, want %v", cmds[0], want)
-		}
-	}
-}
-
-func TestDetectServiceStopCommandsEmptyWhenNoSupervisorDetected(t *testing.T) {
-	statFile := func(path string) bool { return false }
-	lookPath := func(name string) (string, error) { return "", errNotFound }
-
-	cmds := detectServiceStopCommands(lookPath, statFile)
-
-	if len(cmds) != 0 {
-		t.Fatalf("cmds = %v, want empty when neither systemd nor openwrt detected", cmds)
-	}
-}
-
-func TestHandleUninstallRejectsUnauthenticatedRequest(t *testing.T) {
+func TestDisabledSystemEndpointsReturnGone(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := &Server{auth: config.WebConfig{Username: "admin", Password: "secret"}}
+	s := &Server{}
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/system/uninstall", nil)
+	tests := []struct {
+		name    string
+		method  string
+		path    string
+		handler func(*gin.Context)
+		code    string
+	}{
+		{
+			name:    "check update",
+			method:  http.MethodGet,
+			path:    "/api/system/update/check",
+			handler: s.handleCheckUpdate,
+			code:    "online_update_disabled",
+		},
+		{
+			name:    "apply update",
+			method:  http.MethodPost,
+			path:    "/api/system/update/apply",
+			handler: s.handleApplyUpdate,
+			code:    "online_update_disabled",
+		},
+		{
+			name:    "uninstall",
+			method:  http.MethodPost,
+			path:    "/api/system/uninstall",
+			handler: s.handleUninstall,
+			code:    "uninstall_disabled",
+		},
+	}
 
-	s.handleUninstall(c)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(tt.method, tt.path, nil)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("code=%d body=%s, want 401 —— uninstall 必须要求登录后才能调用", w.Code, w.Body.String())
+			tt.handler(c)
+
+			if w.Code != http.StatusGone {
+				t.Fatalf("code=%d body=%s, want 410", w.Code, w.Body.String())
+			}
+			if !containsJSONField(w.Body.String(), `"code":"`+tt.code+`"`) {
+				t.Fatalf("body=%s, want code %q", w.Body.String(), tt.code)
+			}
+		})
 	}
 }
 
-func TestNewRouterRequiresAuthForUninstall(t *testing.T) {
+func TestRouterDoesNotRegisterUpdateOrUninstallEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	s := &Server{auth: config.WebConfig{Username: "admin", Password: "secret"}}
+	s := &Server{}
 	r := s.newRouter()
 
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/system/uninstall", nil)
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("code=%d body=%s, want 401", w.Code, w.Body.String())
+	tests := []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/system/update/check"},
+		{method: http.MethodPost, path: "/api/system/update/apply"},
+		{method: http.MethodPost, path: "/api/system/uninstall"},
 	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+
+			r.ServeHTTP(w, req)
+
+			if w.Code != http.StatusNotFound {
+				t.Fatalf("code=%d body=%s, want 404", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func containsJSONField(body string, field string) bool {
+	for i := 0; i+len(field) <= len(body); i++ {
+		if body[i:i+len(field)] == field {
+			return true
+		}
+	}
+	return false
 }

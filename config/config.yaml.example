@@ -1,0 +1,9 @@
+server:
+  debug: false
+  port: 7575
+
+web:
+  username: admin
+  password: ""
+
+devices: []

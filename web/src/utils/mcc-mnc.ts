@@ -14,7 +14,7 @@ export type ServingOperatorLike = {
 }
 
 const TABLE_URL = 'https://raw.githubusercontent.com/musalbas/mcc-mnc-table/refs/heads/master/mcc-mnc-table.json'
-const STORAGE_KEY = 'go-4gproxy:mcc-mnc-table:v1'
+const STORAGE_KEY = 'vohive:mcc-mnc-table:v1'
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 type CachePayload = {

@@ -4,7 +4,8 @@ server:
 
 web:
   username: admin
-  password: admin
+  # Set a strong password before starting, or provide VOHIVE_ADMIN_PASSWORD.
+  password: ""
 
 devices: []
 
