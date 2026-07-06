@@ -74,6 +74,7 @@ Docker 镜像完全从仓库当前源码构建：
 
 - 前端源码位于 `web/`，使用 `npm ci` 和 `npm run build` 构建。
 - Go 源码、`go.mod`、`go.sum` 位于仓库根目录。
+- `github.com/iniwex5/vowifi-go` 使用 `third_party/vowifi-go` 本地替换，来源固定为公开仓库 `boa-z/vowifi-go` 的提交 `f6eff2c27014e7d17e3660e32ca727fb04ca91b6`，构建时不跟随 `main` 或 `latest`。
 - Dockerfile 不引用 `go-4gproxy` 目录。
 - 构建不使用 `GH_PAT`，不配置 `GOPRIVATE`，不访问私人仓库，不下载预编译 VoHive 二进制。
 - 在线自更新和自毁卸载接口已禁用，不会从 `iniwex5/vohive-release` 或任何远程地址下载二进制并替换自身，也不会通过 Web 接口删除配置、数据、日志或可执行程序。
