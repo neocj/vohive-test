@@ -22,6 +22,8 @@ ENV CGO_ENABLED=0 \
 RUN apk add --no-cache ca-certificates tzdata
 
 COPY go.mod go.sum ./
+COPY third_party/vowifi-go ./third_party/vowifi-go
+
 RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     go mod download
 
