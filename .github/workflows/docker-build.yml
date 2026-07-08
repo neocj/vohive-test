@@ -2,6 +2,12 @@ name: Build and Publish ARM64 Docker Image
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/sms-ucs2-decode
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -16,6 +22,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test SMS codec
+        run: go test ./pkg/smscodec
+
+      - name: Test Go packages
+        run: go test ./pkg/...
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -45,10 +63,10 @@ jobs:
           context: .
           file: Dockerfile
           platforms: linux/arm64
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ${{ env.IMAGE_NAME }}:arm64
-            ${{ env.IMAGE_NAME }}:latest-arm64
+            ${{ env.IMAGE_NAME }}:arm64-smsfix
+            ${{ env.IMAGE_NAME }}:arm64-smsfix-${{ github.sha }}
           build-args: |
             VERSION=${{ steps.vars.outputs.version }}
             BUILD_TIME=${{ steps.vars.outputs.build_time }}

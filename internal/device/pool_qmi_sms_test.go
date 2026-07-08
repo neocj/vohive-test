@@ -24,8 +24,11 @@ type qmiSMSCoreStub struct {
 	}
 	readResults map[string]*qmimanager.DecodedSMS
 	readErrors  map[string]error
+	rawResults  map[string][]byte
+	rawErrors   map[string]error
 
 	readCalls   []string
+	rawCalls    []string
 	listCalls   []string
 	deleteCalls []string
 	ackCalls    []qmicore.RawSMSIndication
@@ -73,6 +76,18 @@ func (s *qmiSMSCoreStub) ReadSMS(preferredStorage uint8, index uint32) (*qmimana
 		return msg, nil
 	}
 	return nil, errors.New("missing SMS")
+}
+
+func (s *qmiSMSCoreStub) WMSRawReadMessage(ctx context.Context, storageType uint8, index uint32) ([]byte, error) {
+	key := s.key(storageType, index)
+	s.rawCalls = append(s.rawCalls, key)
+	if err := s.rawErrors[key]; err != nil {
+		return nil, err
+	}
+	if raw := s.rawResults[key]; raw != nil {
+		return append([]byte(nil), raw...), nil
+	}
+	return nil, errors.New("missing raw SMS")
 }
 
 func (s *qmiSMSCoreStub) WMSDeleteMessage(ctx context.Context, storageType uint8, index uint32) error {

@@ -47,6 +47,37 @@ func TestReassemblerDeduplicatesSequence(t *testing.T) {
 	}
 }
 
+func TestReassemblerDoesNotMergeDifferentDevices(t *testing.T) {
+	r := NewReassembler()
+	concat1 := ConcatInfo{IsConcat: true, Ref: 12, RefBits: 8, Total: 2, Seq: 1}
+	concat2 := ConcatInfo{IsConcat: true, Ref: 12, RefBits: 8, Total: 2, Seq: 2}
+
+	if complete, _ := r.AddForDevice("sim-a", "10086", concat1, "a1"); complete {
+		t.Fatal("first device fragment should not complete")
+	}
+	if complete, _ := r.AddForDevice("sim-b", "10086", concat2, "b2"); complete {
+		t.Fatal("different device fragment must not complete another device message")
+	}
+	complete, full := r.AddForDevice("sim-a", "10086", concat2, "a2")
+	if !complete || full != "a1a2" {
+		t.Fatalf("same device completion = (%v, %q), want (true, a1a2)", complete, full)
+	}
+}
+
+func TestReassemblerSuppressesCompletedDuplicateGroup(t *testing.T) {
+	r := NewReassembler()
+	concat1 := ConcatInfo{IsConcat: true, Ref: 13, RefBits: 16, Total: 2, Seq: 1}
+	concat2 := ConcatInfo{IsConcat: true, Ref: 13, RefBits: 16, Total: 2, Seq: 2}
+
+	r.AddForDevice("sim-a", "10086", concat1, "left")
+	if complete, full := r.AddForDevice("sim-a", "10086", concat2, "right"); !complete || full != "leftright" {
+		t.Fatalf("completion = (%v, %q), want (true, leftright)", complete, full)
+	}
+	if complete, full := r.AddForDevice("sim-a", "10086", concat1, "left"); complete || full != "" {
+		t.Fatalf("duplicate completed group = (%v, %q), want (false, empty)", complete, full)
+	}
+}
+
 func TestReassemblerCleanupRemovesExpiredGroup(t *testing.T) {
 	r := NewReassembler()
 	concat1 := ConcatInfo{IsConcat: true, Ref: 11, Total: 2, Seq: 1}

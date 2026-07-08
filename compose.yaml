@@ -1,6 +1,6 @@
 services:
   vohive:
-    image: ghcr.io/neocj/vohive-test:arm64
+    image: ghcr.io/neocj/vohive-test:arm64-smsfix
     container_name: vohive
     restart: unless-stopped
     network_mode: host

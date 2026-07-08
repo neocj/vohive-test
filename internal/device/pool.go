@@ -49,6 +49,7 @@ type qmiSMSCore interface {
 		Index uint32
 		Tag   qmi.MessageTagType
 	}, error)
+	WMSRawReadMessage(ctx context.Context, storageType uint8, index uint32) ([]byte, error)
 	ReadSMS(preferredStorage uint8, index uint32) (*qmimanager.DecodedSMS, error)
 	WMSDeleteMessage(ctx context.Context, storageType uint8, index uint32) error
 	AckRawSMS(ctx context.Context, info qmicore.RawSMSIndication, success bool) error
@@ -274,7 +275,6 @@ func (p *Pool) assignWorkerGeneration(worker *Worker) uint64 {
 	}
 	return generation
 }
-
 
 func (p *Pool) registerWorkerStarting(worker *Worker) error {
 	if p == nil || worker == nil || strings.TrimSpace(worker.ID) == "" {

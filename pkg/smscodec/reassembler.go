@@ -10,6 +10,7 @@ import (
 
 type Fragment struct {
 	Ref     int
+	RefBits int
 	Total   int
 	Seq     int
 	Content string
@@ -17,15 +18,23 @@ type Fragment struct {
 }
 
 type Reassembler struct {
-	mu    sync.Mutex
-	cache map[string][]Fragment
+	mu        sync.Mutex
+	cache     map[string][]Fragment
+	completed map[string]time.Time
 }
 
 func NewReassembler() *Reassembler {
-	return &Reassembler{cache: make(map[string][]Fragment)}
+	return &Reassembler{
+		cache:     make(map[string][]Fragment),
+		completed: make(map[string]time.Time),
+	}
 }
 
 func (r *Reassembler) Add(sender string, concat ConcatInfo, content string) (complete bool, fullContent string) {
+	return r.AddForDevice("", sender, concat, content)
+}
+
+func (r *Reassembler) AddForDevice(deviceID, sender string, concat ConcatInfo, content string) (complete bool, fullContent string) {
 	if !concat.IsConcat {
 		return true, content
 	}
@@ -33,7 +42,10 @@ func (r *Reassembler) Add(sender string, concat ConcatInfo, content string) (com
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	key := fmt.Sprintf("%s_%d", sender, concat.Ref)
+	key := fmt.Sprintf("%s|%s|%d|%d|%d", deviceID, sender, concat.RefBits, concat.Ref, concat.Total)
+	if _, ok := r.completed[key]; ok {
+		return false, ""
+	}
 	fragments := r.cache[key]
 	for _, f := range fragments {
 		if f.Seq == concat.Seq {
@@ -42,6 +54,7 @@ func (r *Reassembler) Add(sender string, concat ConcatInfo, content string) (com
 	}
 	fragments = append(fragments, Fragment{
 		Ref:     concat.Ref,
+		RefBits: concat.RefBits,
 		Total:   concat.Total,
 		Seq:     concat.Seq,
 		Content: content,
@@ -59,6 +72,7 @@ func (r *Reassembler) Add(sender string, concat ConcatInfo, content string) (com
 		full.WriteString(f.Content)
 	}
 	delete(r.cache, key)
+	r.completed[key] = time.Now()
 	return true, full.String()
 }
 
@@ -76,6 +90,11 @@ func (r *Reassembler) Cleanup(ttl time.Duration) {
 		}
 		if latest.IsZero() || !latest.After(cutoff) {
 			delete(r.cache, key)
+		}
+	}
+	for key, completedAt := range r.completed {
+		if completedAt.IsZero() || !completedAt.After(cutoff) {
+			delete(r.completed, key)
 		}
 	}
 }

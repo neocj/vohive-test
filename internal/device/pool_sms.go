@@ -2,7 +2,6 @@ package device
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -49,6 +48,43 @@ func (w *Worker) qmiSMSStorageHasIndex(storage uint8, index uint32) bool {
 	return false
 }
 
+func readDecodedSMSFromStorageQMI(smsCore qmiSMSCore, storage uint8, index uint32) (*qmimanager.DecodedSMS, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	raw, rawErr := smsCore.WMSRawReadMessage(ctx, storage, index)
+	if rawErr == nil {
+		decoded, err := smscodec.DecodeIncomingPDU(raw, storage, index)
+		if err == nil {
+			return decodedSMSFromCodec(decoded), nil
+		}
+		rawErr = err
+	}
+
+	decoded, readErr := smsCore.ReadSMS(storage, index)
+	if readErr == nil {
+		return decoded, nil
+	}
+	return nil, errors.Join(rawErr, readErr)
+}
+
+func decodedSMSFromCodec(msg *smscodec.DecodedIncomingSMS) *qmimanager.DecodedSMS {
+	if msg == nil {
+		return nil
+	}
+	return &qmimanager.DecodedSMS{
+		Index:       msg.Index,
+		Storage:     msg.Storage,
+		Sender:      msg.Sender,
+		Message:     msg.Message,
+		Timestamp:   msg.Timestamp,
+		IsConcat:    msg.Concat.IsConcat,
+		ConcatRef:   msg.Concat.Ref,
+		ConcatTotal: msg.Concat.Total,
+		ConcatSeq:   msg.Concat.Seq,
+	}
+}
+
 func (w *Worker) readIncomingSMSQMI(storage uint8, index uint32) (*qmimanager.DecodedSMS, uint8, error) {
 	smsCore := w.smsQMICore()
 	if smsCore == nil {
@@ -56,7 +92,7 @@ func (w *Worker) readIncomingSMSQMI(storage uint8, index uint32) (*qmimanager.De
 	}
 
 	if storage == 0 || storage == 1 {
-		sms, err := smsCore.ReadSMS(storage, index)
+		sms, err := readDecodedSMSFromStorageQMI(smsCore, storage, index)
 		if err == nil {
 			return sms, storage, nil
 		}
@@ -72,7 +108,7 @@ func (w *Worker) readIncomingSMSQMI(storage uint8, index uint32) (*qmimanager.De
 				"fallback_storage", alternate,
 				"err", err,
 			)
-			sms, fallbackErr := smsCore.ReadSMS(alternate, index)
+			sms, fallbackErr := readDecodedSMSFromStorageQMI(smsCore, alternate, index)
 			if fallbackErr == nil {
 				return sms, alternate, nil
 			}
@@ -82,7 +118,7 @@ func (w *Worker) readIncomingSMSQMI(storage uint8, index uint32) (*qmimanager.De
 	}
 
 	for _, candidate := range []uint8{1, 0} {
-		sms, err := smsCore.ReadSMS(candidate, index)
+		sms, err := readDecodedSMSFromStorageQMI(smsCore, candidate, index)
 		if err == nil {
 			return sms, candidate, nil
 		}
@@ -200,11 +236,10 @@ func (w *Worker) handleNewSMSRawQMI(info qmicore.RawSMSIndication) {
 		"format", info.Format,
 	)
 
-	sms, err := qmimanager.DecodeIncomingSMSPDU(info.PDU, qmiSMSStorageUnknown, ^uint32(0))
+	decoded, err := smscodec.DecodeIncomingPDU(info.PDU, qmiSMSStorageUnknown, ^uint32(0))
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] 解析原始短信失败 (QMI)", w.ID),
 			"pdu_len", len(info.PDU),
-			"pdu_hex", rawSMSPDUHexForLog(info.PDU),
 			"ack_required", info.AckRequired,
 			"transaction_id", info.TransactionID,
 			"format", info.Format,
@@ -214,7 +249,7 @@ func (w *Worker) handleNewSMSRawQMI(info qmicore.RawSMSIndication) {
 		return
 	}
 
-	w.processDecodedSMSQMI(sms)
+	w.processDecodedSMSQMI(decodedSMSFromCodec(decoded))
 	w.ackRawSMSQMI(info, "processed")
 }
 
@@ -241,14 +276,6 @@ func (w *Worker) ackRawSMSQMI(info qmicore.RawSMSIndication, reason string) {
 	}
 }
 
-func rawSMSPDUHexForLog(pdu []byte) string {
-	const maxRawSMSLogBytes = 128
-	if len(pdu) <= maxRawSMSLogBytes {
-		return strings.ToUpper(hex.EncodeToString(pdu))
-	}
-	return strings.ToUpper(hex.EncodeToString(pdu[:maxRawSMSLogBytes])) + "...(truncated)"
-}
-
 func (w *Worker) processDecodedSMSQMI(sms *qmimanager.DecodedSMS) {
 	if sms == nil {
 		return
@@ -262,7 +289,7 @@ func (w *Worker) processDecodedSMSQMI(sms *qmimanager.DecodedSMS) {
 			Seq:      sms.ConcatSeq,
 		}
 		logger.Debug(fmt.Sprintf("[%s] 收到 QMI 短信分片", w.ID), "ref", sms.ConcatRef, "seq", sms.ConcatSeq, "total", sms.ConcatTotal)
-		complete, full := w.reassembler.Add(sms.Sender, concat, sms.Message)
+		complete, full := w.reassembler.AddForDevice(w.ID, sms.Sender, concat, sms.Message)
 		if !complete {
 			return
 		}
